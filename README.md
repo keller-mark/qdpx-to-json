@@ -1,7 +1,7 @@
-# qdpx-to-astro
+# qdpx-to-json
 
 ```sh
 uv run convert.py \
-    --input ./data/in/scSTAR_20240917.qdpx \
+    --input ./data/in/my_project.qdpx \
     --output ./data/out/
 ```

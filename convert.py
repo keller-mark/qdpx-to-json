@@ -41,10 +41,12 @@ def extract_data(unzipped_dir, out_dir):
     with open(out_json, "w") as f:
         json.dump(project.to_json(), f)
     
-    print(list(sources)[0])
+    #print(list(sources)[0])
 
+    # For each quotation within each source, extract the quoted region as an image file
     for source in sources:
         if source.name == "PDFSource":
+            #print(source)
             pdf_guid = source["guid"]
             pdf_file = source["path"][11:]
             pdf_path = join(pdf_dir, pdf_file)
@@ -55,16 +57,19 @@ def extract_data(unzipped_dir, out_dir):
 
             selections = source.find_all("PDFSelection")
             for selection in selections:
+                #print(selection)
+
                 sel_page = selection["page"]
-                sel_x1 = selection["firstX"]
-                sel_x2 = selection["secondX"]
-                sel_y1 = selection["firstY"]
-                sel_y2 = selection["secondY"]
+                page = doc.load_page(int(sel_page))
+
+
+                sel_x1 = int(selection["firstX"])
+                sel_x2 = int(selection["secondX"])
+                sel_y1 = page.rect.y1 - int(selection["secondY"])
+                sel_y2 = page.rect.y1 - int(selection["firstY"])
                 sel_guid = selection["guid"]
 
-                page = doc[int(sel_page)]
-
-                mat = pymupdf.Matrix(2, 2)  # zoom factor 2 in each direction
+                mat = pymupdf.Matrix(8, 8)  # zoom factor 2 in each direction
 
                 sel_rect = pymupdf.Rect(sel_x1, sel_y1, sel_x2, sel_y2) # (x0, y0, x1, y1)
                 pix = page.get_pixmap(matrix=mat, clip=sel_rect)
@@ -73,11 +78,8 @@ def extract_data(unzipped_dir, out_dir):
 
                 with open(png_file, "wb") as f:
                     f.write(pix.tobytes("png"))
-
-
-    # For each quotation within each source, extract the quoted region as an image file
-
-    return [], []
+    
+    print("Done")
 
 
 if __name__ == "__main__":
@@ -94,5 +96,5 @@ if __name__ == "__main__":
     with zipfile.ZipFile(args.input, "r") as zip_ref:
         zip_ref.extractall(unzipped_dir)
 
-    quotations, codes = extract_data(unzipped_dir, out_dir)
+    extract_data(unzipped_dir, out_dir)
 
