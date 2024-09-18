@@ -5,6 +5,8 @@
 #     "lxml",
 #     "bs2json",
 #     "pymupdf",
+#     "pandas",
+#     "numpy",
 # ]
 # ///
 import json
@@ -15,6 +17,8 @@ from bs4 import BeautifulSoup
 from argparse import ArgumentParser
 from bs2json import install
 import pymupdf
+import pandas as pd
+import numpy as np
 
 def extract_data(unzipped_dir, out_dir):
     pdf_dir = join(unzipped_dir, "sources")
@@ -49,8 +53,9 @@ def extract_data(unzipped_dir, out_dir):
     os.makedirs(content_quotations_dir, exist_ok=True)
     os.makedirs(content_sets_dir, exist_ok=True)
 
-    # TODO: construct dataframes to enable computation of simple stats like number of quotes per source, number of codes per quote, etc.
-    
+    # Construct dataframe to enable computation of simple stats like number of quotes per source, number of codes per quote, etc.
+    quotes_rows = []
+
     # Create separate files for astro
     for code in project_json["Project"]["CodeBook"]["Codes"]["Code"]:
         code_attrs = code["attrs"]
@@ -77,6 +82,15 @@ def extract_data(unzipped_dir, out_dir):
 
                 with open(join(content_quotations_dir, f"{quotation_guid}.json"), "w") as f:
                     json.dump(quotation, f, indent=4)
+                
+                quotes_rows += [
+                    {
+                        "source_guid": source_guid,
+                        "quote_guid": quotation_guid,
+                        "coderef_guid": c["CodeRef"]["attrs"]["targetGUID"]
+                    }
+                    for c in quotation["Coding"]
+                ]
 
     for code_set in project_json["Project"]["Sets"]["Set"]:
         set_attrs = code_set["attrs"]
@@ -85,12 +99,14 @@ def extract_data(unzipped_dir, out_dir):
         with open(join(content_sets_dir, f"{set_guid}.json"), "w") as f:
             json.dump(code_set, f, indent=4)
     
+    quotes_df = pd.DataFrame(data=quotes_rows)
+    quotes_df.to_csv(join(out_dir, "quotes.csv"), index=True)
+    
     img_dir = join(out_dir, "images")
 
     # For each quotation within each source, extract the quoted region as an image file
     for source in sources:
         if source.name == "PDFSource":
-            #print(source)
             pdf_guid = source["guid"]
             pdf_file = source["path"][11:]
             pdf_path = join(pdf_dir, pdf_file)
@@ -101,11 +117,8 @@ def extract_data(unzipped_dir, out_dir):
 
             selections = source.find_all("PDFSelection")
             for selection in selections:
-                #print(selection)
-
                 sel_page = selection["page"]
                 page = doc.load_page(int(sel_page))
-
 
                 sel_x1 = int(selection["firstX"])
                 sel_x2 = int(selection["secondX"])
