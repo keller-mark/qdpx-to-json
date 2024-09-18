@@ -33,15 +33,59 @@ def extract_data(unzipped_dir, out_dir):
         soup = BeautifulSoup(f, 'xml')
 
     project = soup.find("Project")
-    codes = project.find("CodeBook").find("Codes")
-    code_sets = project.find("Sets")
     sources = project.find("Sources")
 
+    project_json = project.to_json()
     out_json = join(out_dir, "output.json")
     with open(out_json, "w") as f:
-        json.dump(project.to_json(), f)
+        json.dump(project_json, f, indent=4)
     
-    #print(list(sources)[0])
+    content_codes_dir = join(out_dir, "content", "codes")
+    content_sources_dir = join(out_dir, "content", "sources")
+    content_quotations_dir = join(out_dir, "content", "quotations")
+    content_sets_dir = join(out_dir, "content", "sets")
+    os.makedirs(content_codes_dir, exist_ok=True)
+    os.makedirs(content_sources_dir, exist_ok=True)
+    os.makedirs(content_quotations_dir, exist_ok=True)
+    os.makedirs(content_sets_dir, exist_ok=True)
+
+    # TODO: construct dataframes to enable computation of simple stats like number of quotes per source, number of codes per quote, etc.
+    
+    # Create separate files for astro
+    for code in project_json["Project"]["CodeBook"]["Codes"]["Code"]:
+        code_attrs = code["attrs"]
+        code_guid = code_attrs["guid"]
+
+        with open(join(content_codes_dir, f"{code_guid}.json"), "w") as f:
+            json.dump(code_attrs, f, indent=4)
+    
+    for source in project_json["Project"]["Sources"]["PDFSource"]:
+        source_attrs = source["attrs"]
+        source_guid = source_attrs["guid"]
+
+        with open(join(content_sources_dir, f"{source_guid}.json"), "w") as f:
+            json.dump(source_attrs, f, indent=4)
+    
+        for quotation in source["PDFSelection"]:
+            if "Coding" in quotation:
+                quotation_attrs = quotation["attrs"]
+                quotation_guid = quotation_attrs["guid"]
+                quotation["source_guid"] = source_guid
+
+                if isinstance(quotation["Coding"], dict):
+                    quotation["Coding"] = [quotation["Coding"]]
+
+                with open(join(content_quotations_dir, f"{quotation_guid}.json"), "w") as f:
+                    json.dump(quotation, f, indent=4)
+
+    for code_set in project_json["Project"]["Sets"]["Set"]:
+        set_attrs = code_set["attrs"]
+        set_guid = set_attrs["guid"]
+
+        with open(join(content_sets_dir, f"{set_guid}.json"), "w") as f:
+            json.dump(code_set, f, indent=4)
+    
+    img_dir = join(out_dir, "images")
 
     # For each quotation within each source, extract the quoted region as an image file
     for source in sources:
@@ -53,7 +97,7 @@ def extract_data(unzipped_dir, out_dir):
 
             doc = pymupdf.open(pdf_path)
 
-            os.makedirs(join(out_dir, pdf_guid), exist_ok=True)
+            os.makedirs(join(img_dir, pdf_guid), exist_ok=True)
 
             selections = source.find_all("PDFSelection")
             for selection in selections:
@@ -74,7 +118,7 @@ def extract_data(unzipped_dir, out_dir):
                 sel_rect = pymupdf.Rect(sel_x1, sel_y1, sel_x2, sel_y2) # (x0, y0, x1, y1)
                 pix = page.get_pixmap(matrix=mat, clip=sel_rect)
 
-                png_file = join(out_dir, pdf_guid, f"{sel_guid}.png")
+                png_file = join(img_dir, pdf_guid, f"{sel_guid}.png")
 
                 with open(png_file, "wb") as f:
                     f.write(pix.tobytes("png"))
@@ -90,7 +134,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     unzipped_dir = join(args.output, "unzipped")
-    out_dir = join(args.output, "output")
+    out_dir = args.output
     os.makedirs(out_dir, exist_ok=True)
 
     with zipfile.ZipFile(args.input, "r") as zip_ref:
