@@ -70,6 +70,15 @@ def extract_data(unzipped_dir, out_dir):
 
         with open(join(content_sources_dir, f"{source_guid}.json"), "w") as f:
             json.dump(source_attrs, f, indent=4)
+
+        # there might not be a selection in a PDF
+        if "PDFSelection" not in source:
+            continue
+
+        # if there's only one selection in a single PDF,
+        # `source["PDFSelection"]` is a dict and not an array
+        if isinstance(source["PDFSelection"], dict):
+            source["PDFSelection"] = [source["PDFSelection"]]
     
         for quotation in source["PDFSelection"]:
             if "Coding" in quotation:
