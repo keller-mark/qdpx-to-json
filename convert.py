@@ -19,8 +19,11 @@ from bs2json import install
 import pymupdf
 import pandas as pd
 import numpy as np
+import re
 
-def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - "):
+fignum_regex = r"^\d[a-zA-Z]$"
+
+def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_text_quotes=True, exclude_fignum_codes=True):
     pdf_dir = join(unzipped_dir, "sources")
 
     unzipped_files = os.listdir(unzipped_dir)
@@ -61,6 +64,8 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - "):
         code_name = code_attrs["name"]
         if code_name.startswith(smart_code_prefix):
             code_names_to_ignore.append(code_name[len(smart_code_prefix):])
+        if exclude_fignum_codes and re.match(fignum_regex, code_name) is not None:
+            code_names_to_ignore.append(code_name)
     
     for code in project_json["Project"]["CodeBook"]["Codes"]["Code"]:
         code_attrs = code["attrs"]
@@ -108,7 +113,12 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - "):
             if "Coding" in quotation:
                 quotation_attrs = quotation["attrs"]
                 quotation_guid = quotation_attrs["guid"]
+                quotation_name = quotation_attrs["name"]
                 quotation["source_guid"] = source_guid
+
+                is_text_quote = ("\u00d7" not in quotation_name)
+                if exclude_text_quotes and is_text_quote:
+                    continue
 
                 if isinstance(quotation["Coding"], dict):
                     quotation["Coding"] = [quotation["Coding"]]
