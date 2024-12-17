@@ -20,7 +20,7 @@ import pymupdf
 import pandas as pd
 import numpy as np
 
-def extract_data(unzipped_dir, out_dir):
+def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - "):
     pdf_dir = join(unzipped_dir, "sources")
 
     unzipped_files = os.listdir(unzipped_dir)
@@ -53,17 +53,41 @@ def extract_data(unzipped_dir, out_dir):
     os.makedirs(content_quotations_dir, exist_ok=True)
     os.makedirs(content_sets_dir, exist_ok=True)
 
+    # Create list of code for which there are corresponding smart codes
+    code_names_to_ignore = []
+    code_guids_to_ignore = []
+    for code in project_json["Project"]["CodeBook"]["Codes"]["Code"]:
+        code_attrs = code["attrs"]
+        code_name = code_attrs["name"]
+        if code_name.startswith(smart_code_prefix):
+            code_names_to_ignore.append(code_name[len(smart_code_prefix):])
+    
+    for code in project_json["Project"]["CodeBook"]["Codes"]["Code"]:
+        code_attrs = code["attrs"]
+        code_name = code_attrs["name"]
+        if code_name in code_names_to_ignore:
+            code_guids_to_ignore.append(code_attrs["guid"])
+
     # Construct dataframe to enable computation of simple stats like number of quotes per source, number of codes per quote, etc.
     quotes_rows = []
 
     # Create separate files for astro
+    code_guid_to_name = dict()
     for code in project_json["Project"]["CodeBook"]["Codes"]["Code"]:
         code_attrs = code["attrs"]
+        code_name = code_attrs["name"]
+        if code_name.startswith(smart_code_prefix):
+            # If this was a smart code, remove the prefix.
+            code_name = code_name[len(smart_code_prefix):]
+            code_attrs["name"] = code_name
         code_guid = code_attrs["guid"]
-
-        with open(join(content_codes_dir, f"{code_guid}.json"), "w") as f:
-            json.dump(code_attrs, f, indent=4)
-    
+        code_guid_to_name[code_guid] = code_name
+        
+        # We need to check the code name _before_ removing any prefix.
+        if code_guid not in code_guids_to_ignore:
+            with open(join(content_codes_dir, f"{code_guid}.json"), "w") as f:
+                json.dump(code_attrs, f, indent=4)
+        
     for source in project_json["Project"]["Sources"]["PDFSource"]:
         source_attrs = source["attrs"]
         source_guid = source_attrs["guid"]
@@ -89,6 +113,16 @@ def extract_data(unzipped_dir, out_dir):
                 if isinstance(quotation["Coding"], dict):
                     quotation["Coding"] = [quotation["Coding"]]
 
+                # Remove codes that are to be ignored
+                cleaned_codes_for_quotation = []
+                for c in quotation["Coding"]:
+                    code_guid = c["CodeRef"]["attrs"]["targetGUID"]
+                    if code_guid not in code_guids_to_ignore:
+                        cleaned_codes_for_quotation.append(c)
+                
+                # Update the quotation with the cleaned codes, since this is what will be saved to JSON.
+                quotation["Coding"] = cleaned_codes_for_quotation
+
                 with open(join(content_quotations_dir, f"{quotation_guid}.json"), "w") as f:
                     json.dump(quotation, f, indent=4)
                 
@@ -96,7 +130,9 @@ def extract_data(unzipped_dir, out_dir):
                     {
                         "source_guid": source_guid,
                         "quote_guid": quotation_guid,
-                        "coderef_guid": c["CodeRef"]["attrs"]["targetGUID"]
+                        "coderef_guid": c["CodeRef"]["attrs"]["targetGUID"],
+                        # Append code names for easier analysis.
+                        "code_name": code_guid_to_name[c["CodeRef"]["attrs"]["targetGUID"]],
                     }
                     for c in quotation["Coding"]
                 ]
