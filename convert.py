@@ -23,7 +23,7 @@ import re
 
 fignum_regex = r"^\d[a-zA-Z]$"
 
-def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_text_quotes=True, exclude_fignum_codes=True):
+def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_text_quotes=True, exclude_fignum_codes=True, exclude_source_groups=None):
     pdf_dir = join(unzipped_dir, "sources")
 
     unzipped_files = os.listdir(unzipped_dir)
@@ -50,11 +50,13 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_
     content_codes_dir = join(out_dir, "content", "codes")
     content_sources_dir = join(out_dir, "content", "sources")
     content_quotations_dir = join(out_dir, "content", "quotations")
-    content_sets_dir = join(out_dir, "content", "sets")
+    content_code_groups_dir = join(out_dir, "content", "code_groups")
+    content_source_groups_dir = join(out_dir, "content", "source_groups")
     os.makedirs(content_codes_dir, exist_ok=True)
     os.makedirs(content_sources_dir, exist_ok=True)
     os.makedirs(content_quotations_dir, exist_ok=True)
-    os.makedirs(content_sets_dir, exist_ok=True)
+    os.makedirs(content_code_groups_dir, exist_ok=True)
+    os.makedirs(content_source_groups_dir, exist_ok=True)
 
     # Create list of code for which there are corresponding smart codes
     code_names_to_ignore = []
@@ -92,10 +94,38 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_
         if code_guid not in code_guids_to_ignore:
             with open(join(content_codes_dir, f"{code_guid}.json"), "w") as f:
                 json.dump(code_attrs, f, indent=4)
+    
+    # Sets can represent code groups (MemberCode) or source groups (MemberSource)
+    source_group_name_to_member_source_guids = dict()
+    for code_or_source_group in project_json["Project"]["Sets"]["Set"]:
+        if "MemberCode" in code_or_source_group:
+            set_attrs = code_or_source_group["attrs"]
+            set_guid = set_attrs["guid"]
+
+            with open(join(content_code_groups_dir, f"{set_guid}.json"), "w") as f:
+                json.dump(code_or_source_group, f, indent=4)
+        if "MemberSource" in code_or_source_group:
+            set_attrs = code_or_source_group["attrs"]
+            set_guid = set_attrs["guid"]
+
+            source_group_name = set_attrs["name"]
+            source_group_name_to_member_source_guids[source_group_name] = [member["attrs"]["targetGUID"] for member in code_or_source_group["MemberSource"]]
+
+            with open(join(content_source_groups_dir, f"{set_guid}.json"), "w") as f:
+                json.dump(code_or_source_group, f, indent=4)
         
     for source in project_json["Project"]["Sources"]["PDFSource"]:
         source_attrs = source["attrs"]
         source_guid = source_attrs["guid"]
+
+        # Skip sources that are part of the excluded source groups
+        skip_source = False
+        if len(exclude_source_groups) > 0:
+            for source_group_name in exclude_source_groups:
+                if source_guid in source_group_name_to_member_source_guids[source_group_name]:
+                    skip_source = True
+        if skip_source:
+            continue
 
         with open(join(content_sources_dir, f"{source_guid}.json"), "w") as f:
             json.dump(source_attrs, f, indent=4)
@@ -146,13 +176,6 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_
                     }
                     for c in quotation["Coding"]
                 ]
-
-    for code_set in project_json["Project"]["Sets"]["Set"]:
-        set_attrs = code_set["attrs"]
-        set_guid = set_attrs["guid"]
-
-        with open(join(content_sets_dir, f"{set_guid}.json"), "w") as f:
-            json.dump(code_set, f, indent=4)
     
     quotes_df = pd.DataFrame(data=quotes_rows)
     quotes_df.to_csv(join(out_dir, "quotes.csv"), index=True)
@@ -199,6 +222,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--input", type=str, required=True)
     parser.add_argument("--output", type=str, required=True)
+    parser.add_argument("--exclude-source-groups", nargs='*', default=[])
     args = parser.parse_args()
 
     unzipped_dir = join(args.output, "unzipped")
@@ -208,5 +232,5 @@ if __name__ == "__main__":
     with zipfile.ZipFile(args.input, "r") as zip_ref:
         zip_ref.extractall(unzipped_dir)
 
-    extract_data(unzipped_dir, out_dir)
+    extract_data(unzipped_dir, out_dir, exclude_source_groups=args.exclude_source_groups)
 

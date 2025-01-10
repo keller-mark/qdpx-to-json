@@ -3,5 +3,6 @@
 ```sh
 uv run convert.py \
     --input ./data/in/my_project.qdpx \
-    --output ./data/out/
+    --output ./data/out/ \
+    --exclude-source-groups "interactive tools"
 ```
