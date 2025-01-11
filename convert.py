@@ -61,6 +61,8 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_
     # Create list of code for which there are corresponding smart codes
     code_names_to_ignore = []
     code_guids_to_ignore = []
+
+    fignum_code_guids = dict() # GUID to name (e.g., "2a") mapping
     for code in project_json["Project"]["CodeBook"]["Codes"]["Code"]:
         code_attrs = code["attrs"]
         code_name = code_attrs["name"]
@@ -68,6 +70,7 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_
             code_names_to_ignore.append(code_name[len(smart_code_prefix):])
         if exclude_fignum_codes and re.match(fignum_regex, code_name) is not None:
             code_names_to_ignore.append(code_name)
+            fignum_code_guids[code_attrs["guid"]] = code_name
     
     for code in project_json["Project"]["CodeBook"]["Codes"]["Code"]:
         code_attrs = code["attrs"]
@@ -150,6 +153,8 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_
                 if exclude_text_quotes and is_text_quote:
                     continue
 
+                subfig_num = None
+
                 if isinstance(quotation["Coding"], dict):
                     quotation["Coding"] = [quotation["Coding"]]
 
@@ -159,9 +164,14 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_
                     code_guid = c["CodeRef"]["attrs"]["targetGUID"]
                     if code_guid not in code_guids_to_ignore:
                         cleaned_codes_for_quotation.append(c)
+                    
+                    if code_guid in fignum_code_guids:
+                        subfig_num = fignum_code_guids[code_guid]
+                    
                 
                 # Update the quotation with the cleaned codes, since this is what will be saved to JSON.
                 quotation["Coding"] = cleaned_codes_for_quotation
+                quotation["subfig_num"] = subfig_num
 
                 with open(join(content_quotations_dir, f"{quotation_guid}.json"), "w") as f:
                     json.dump(quotation, f, indent=4)
@@ -169,6 +179,7 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_
                 quotes_rows += [
                     {
                         "source_guid": source_guid,
+                        "subfig_num": subfig_num,
                         "quote_guid": quotation_guid,
                         "coderef_guid": c["CodeRef"]["attrs"]["targetGUID"],
                         # Append code names for easier analysis.
@@ -176,7 +187,7 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_
                     }
                     for c in quotation["Coding"]
                 ]
-    
+        
     quotes_df = pd.DataFrame(data=quotes_rows)
     quotes_df.to_csv(join(out_dir, "quotes.csv"), index=True)
     
