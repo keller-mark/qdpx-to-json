@@ -179,7 +179,8 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_
                 quotes_rows += [
                     {
                         "source_guid": source_guid,
-                        "subfig_num": subfig_num,
+                        "source": source_attrs["name"],
+                        "merged_subfig_num": subfig_num,
                         "quote_guid": quotation_guid,
                         "coderef_guid": c["CodeRef"]["attrs"]["targetGUID"],
                         # Append code names for easier analysis.
@@ -187,8 +188,20 @@ def extract_data(unzipped_dir, out_dir, smart_code_prefix = "SMART - ", exclude_
                     }
                     for c in quotation["Coding"]
                 ]
+    
+    def get_fig_num(merged_subfig_num):
+        if merged_subfig_num is not None and len(merged_subfig_num) >= 1:
+            return merged_subfig_num[0]
+        return None
+
+    def get_subfig_num(merged_subfig_num):
+        if merged_subfig_num is not None and len(merged_subfig_num) == 2:
+            return merged_subfig_num[1]
+        return None
         
     quotes_df = pd.DataFrame(data=quotes_rows)
+    quotes_df["fig_num"] = quotes_df["merged_subfig_num"].apply(get_fig_num)
+    quotes_df["subfig_num"] = quotes_df["merged_subfig_num"].apply(get_subfig_num)
     quotes_df.to_csv(join(out_dir, "quotes.csv"), index=True)
     
     img_dir = join(out_dir, "images")
